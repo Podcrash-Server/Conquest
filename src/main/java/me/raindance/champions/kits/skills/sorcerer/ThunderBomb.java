@@ -12,6 +12,8 @@ import com.podcrash.api.mc.events.ItemCollideEvent;
 import com.podcrash.api.mc.events.TrapPrimeEvent;
 import com.podcrash.api.mc.item.ItemManipulationManager;
 import com.podcrash.api.mc.sound.SoundPlayer;
+import com.podcrash.api.mc.time.TimeHandler;
+import com.podcrash.api.mc.time.resources.TimeResource;
 import com.podcrash.api.mc.util.PacketUtil;
 import me.raindance.champions.kits.annotation.SkillMetadata;
 import me.raindance.champions.kits.enums.InvType;
@@ -24,6 +26,7 @@ import me.raindance.champions.kits.skilltypes.Instant;
 import com.podcrash.api.mc.sound.SoundWrapper;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.block.Block;
 import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -31,6 +34,10 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.player.PlayerEvent;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.util.Vector;
+
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
 
 @SkillMetadata(id = 1009, skillType = SkillType.Sorcerer, invType = InvType.SHOVEL)
 public class ThunderBomb extends Instant implements IEnergy, ICooldown, IConstruct {
@@ -41,6 +48,10 @@ public class ThunderBomb extends Instant implements IEnergy, ICooldown, IConstru
     private int damage = 6;
 
     private int currentItemID;
+
+    // These are all blocks that we need to avoid at all costs to spare the player's ears!
+    private Set<Material> avoid = new HashSet<>(Arrays.asList(Material.WATER, Material.STATIONARY_WATER, Material.LAVA, Material.STATIONARY_LAVA, Material.WEB));
+
     @Override
     public void afterConstruction() {
         this.NAME = getPlayer().getName()  + getName();
@@ -94,6 +105,8 @@ public class ThunderBomb extends Instant implements IEnergy, ICooldown, IConstru
 
         this.currentItemID = item.getEntityId();
 
+        badLandingCheck(item);
+
         getPlayer().sendMessage(getUsedMessage());
     }
 
@@ -129,6 +142,30 @@ public class ThunderBomb extends Instant implements IEnergy, ICooldown, IConstru
         PacketUtil.syncSend(packet, getPlayers());
         TrapSetter.deleteTrap(item);
         item.remove();
+    }
+
+    private void badLandingCheck(Item item) {
+        TimeHandler.repeatedTime(20, 0, new TimeResource() {
+            Block curBlock = item.getLocation().getBlock();
+            Block underBlock = item.getLocation().subtract(0, 1, 0).getBlock();
+            @Override
+            public void task() {
+                curBlock = item.getLocation().getBlock();
+                underBlock = item.getLocation().subtract(0, 1, 0).getBlock();
+            }
+
+            @Override
+            public boolean cancel() {
+                return avoid.contains(curBlock.getType()) || item.isDead()
+                        || (underBlock.getType().equals(Material.LAVA) || underBlock.getType().equals(Material.STATIONARY_LAVA));
+            }
+
+            @Override
+            public void cleanup() {
+                collide(item, item.getLocation());
+                TrapSetter.destroyTrap(item);
+            }
+        });
     }
 
 }
